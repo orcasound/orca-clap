@@ -161,6 +161,7 @@ class AudioCaptionLightningModel(LightningModule):
         audio_token_index = full_inputs.pop("audio_token_index")
 
         text_embeddings = self.text_model.get_input_embeddings()(full_inputs['input_ids'])
+        audio_feat = audio_feat.to(dtype=text_embeddings.dtype, device=text_embeddings.device)
         adapted_audio_embedding = self.adapter(audio_feat)
 
 
@@ -179,18 +180,28 @@ class AudioCaptionLightningModel(LightningModule):
         # to avoid     text_embeddings[:, :audio_token_index, :], TypeError: only integer tensors of a single element can be converted to an index
 
         batch_size, seq_len, hidden_size = text_embeddings.shape
-        modified_embeddings = torch.zeros((batch_size, seq_len, hidden_size), device=text_embeddings.device)
+        # modified_embeddings = torch.zeros((batch_size, seq_len, hidden_size), device=text_embeddings.device, dtype=text_embeddings.dtype)
+        # for i in range(batch_size):
+        #     idx = audio_token_index[i].item()
+        #     modified_embeddings[i, :idx, :] = text_embeddings[i, :idx, :]
+        #     modified_embeddings[i, idx, :] = adapted_audio_embedding[i]
+        #     if idx + 1 < seq_len:
+        #         modified_embeddings[i, idx + 1:, :] = text_embeddings[i, idx + 1:, :]
+
+
+        # modified_embeddings = text_embeddings.clone()  # This preserves device and dtype
+        
+        # Replace audio tokens for each item in the batch
         for i in range(batch_size):
             idx = audio_token_index[i].item()
-            modified_embeddings[i, :idx, :] = text_embeddings[i, :idx, :]
-            modified_embeddings[i, idx, :] = adapted_audio_embedding[i]
-            if idx + 1 < seq_len:
-                modified_embeddings[i, idx + 1:, :] = text_embeddings[i, idx + 1:, :]
+            if 0 <= idx < seq_len:  # Safety check
+                text_embeddings[i, idx, :] = adapted_audio_embedding[i]
+
 
 
         # Forward pass with modified embeddings
         model_inputs = {
-            'inputs_embeds': modified_embeddings,
+            'inputs_embeds': text_embeddings,
             'attention_mask': full_inputs['attention_mask'],
             'labels': labels
         }
@@ -235,10 +246,11 @@ def main(cfg: DictConfig):
 
     # load the tokenizer and the model
     tokenizer = AutoTokenizer.from_pretrained(model_name)
+    
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
         torch_dtype="auto",
-        device_map="auto"
+        # device_map="auto"
     )
 
     # extend the tokenizer with special tokens for audio input
