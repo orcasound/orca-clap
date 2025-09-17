@@ -18,6 +18,8 @@ from pytorch_lightning import Trainer, LightningModule
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from safetensors.torch import save_file, load_file
 
+from codecarbon import EmissionsTracker
+
 class AudioToTextAdapter(torch.nn.Module):
     def __init__(self, audio_dim=768, text_dim=768, bottleneck=128):
         super().__init__()
@@ -216,7 +218,7 @@ class AudioCaptionLightningModel(LightningModule):
         outputs = self.forward(audio_feat, batch, labels)
         loss = outputs.loss
 
-        self.log('train_loss', loss)
+        self.log('train_loss', loss, sync_dist=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -226,7 +228,7 @@ class AudioCaptionLightningModel(LightningModule):
         outputs = self.forward(audio_feat, batch, labels)
         loss = outputs.loss
 
-        self.log('val_loss', loss)
+        self.log('val_loss', loss, sync_dist=True)
         return loss
 
     def configure_optimizers(self):
@@ -252,6 +254,8 @@ def main(cfg: DictConfig):
         torch_dtype="auto",
         cache_dir=cfg.hf_cache_dir,
     )
+    model.train()
+    model.config.use_cache = False  # important for training
 
     # extend the tokenizer with special tokens for audio input
     special_tokens_dict = {'additional_special_tokens': ['<|AUDIO|>']}
@@ -307,7 +311,9 @@ def main(cfg: DictConfig):
         ],
     )
 
-    trainer.fit(ptl_model, training_dataloader, validation_dataloader)
+
+    with EmissionsTracker() as tracker:
+        trainer.fit(ptl_model, training_dataloader, validation_dataloader)
 
     # load best model
     best_model_path = trainer.checkpoint_callback.best_model_path
