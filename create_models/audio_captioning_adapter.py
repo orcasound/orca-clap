@@ -245,12 +245,12 @@ def main(cfg: DictConfig):
     model_name = cfg.model_name
 
     # load the tokenizer and the model
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cfg.hf_cache_dir
     
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
         torch_dtype="auto",
-        # device_map="auto"
+        cache_dir=cfg.hf_cache_dir,
     )
 
     # extend the tokenizer with special tokens for audio input
