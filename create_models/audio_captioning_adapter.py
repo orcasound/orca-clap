@@ -245,7 +245,7 @@ def main(cfg: DictConfig):
     model_name = cfg.model_name
 
     # load the tokenizer and the model
-    tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cfg.hf_cache_dir
+    tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cfg.hf_cache_dir)
     
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
