@@ -21,6 +21,8 @@ from safetensors.torch import save_file, load_file
 from codecarbon import EmissionsTracker
 
 class AudioToTextAdapter(torch.nn.Module):
+    """
+    """
     def __init__(self, audio_dim=768, text_dim=768, bottleneck=128):
         super().__init__()
         self.norm = torch.nn.LayerNorm(audio_dim)
@@ -28,6 +30,8 @@ class AudioToTextAdapter(torch.nn.Module):
         self.fc2 = torch.nn.Linear(bottleneck, text_dim)
 
     def forward(self, audio_feat):
+        """
+        """
         # audio_feat: (batch, audio_dim)
         x = self.norm(audio_feat)
         x = F.relu(self.fc1(x))
@@ -92,7 +96,27 @@ class OrcaHelloAdapterDataset(torch.utils.data.Dataset):
 
         # Create labels: -100 for prompt tokens (ignored), actual token ids for response
         labels = full_inputs['input_ids'].clone()
-        labels[0, :prompt_length] = -100  # Ignore loss on prompt tokens
+
+        # Mask the prompt tokens (we don't want to compute loss on these)
+        # prompt_length = min(prompt_inputs['input_ids'].shape[1], labels.shape[1])
+        # exclude the padded tokens when estimating the prompt_length:
+        prompt_length = min((prompt_inputs['attention_mask'].sum()).item(), full_inputs['attention_mask'].sum().item())
+        labels[0, :prompt_length] = -100
+        
+        # Mask padding tokens
+        labels[labels == self.tokenizer.pad_token_id] = -100
+        
+        # For causal LM, we also need to mask the last token since there's no "next token" to predict
+        # Actually, let's check if we have any valid tokens left
+        valid_tokens = (labels != -100).sum()
+        assert valid_tokens >= 0, "No valid tokens for loss computation"
+        # if valid_tokens == 0:
+        #     # If we have no valid tokens, create a minimal valid sequence
+        #     # Find the end of the prompt and start of response
+        #     response_start = prompt_length
+        #     if response_start < labels.shape[1]:
+        #         # Unmask at least one token for loss computation
+        #         labels[0, response_start] = full_inputs['input_ids'][0, response_start]
 
         # Replace <|AUDIO|> token with audio embedding
         audio_token_id = self.tokenizer.convert_tokens_to_ids('<|AUDIO|>')
@@ -150,6 +174,8 @@ def sample_resolve_nan(x: pd.Series,):
 
 
 class AudioCaptionLightningModel(LightningModule):
+    """
+    """
     def __init__(self, adapter, text_model, tokenizer, learning_rate=1e-4):
         super().__init__()
         self.adapter = adapter
@@ -159,6 +185,8 @@ class AudioCaptionLightningModel(LightningModule):
         # self.loss_fn = torch.nn.CrossEntropyLoss()
 
     def forward(self, audio_feat, full_inputs, labels):
+        """
+        """
         # Get embeddings and replace audio token
         audio_token_index = full_inputs.pop("audio_token_index")
 
@@ -218,7 +246,10 @@ class AudioCaptionLightningModel(LightningModule):
         outputs = self.forward(audio_feat, batch, labels)
         loss = outputs.loss
 
-        self.log('train_loss', loss, sync_dist=True)
+        if torch.isnan(loss):
+            raise ValueError("NaN detected in loss during training step")
+
+        self.log('train_loss', loss, sync_dist=True, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -228,7 +259,7 @@ class AudioCaptionLightningModel(LightningModule):
         outputs = self.forward(audio_feat, batch, labels)
         loss = outputs.loss
 
-        self.log('val_loss', loss, sync_dist=True)
+        self.log('val_loss', loss, sync_dist=True, prog_bar=True)
         return loss
 
     def configure_optimizers(self):
@@ -262,7 +293,9 @@ def main(cfg: DictConfig):
     num_added_toks = tokenizer.add_special_tokens(special_tokens_dict)
     model.resize_token_embeddings(len(tokenizer))
 
-    audio_to_text_adapter = AudioToTextAdapter(audio_dim=cfg.audio_dim, text_dim=model.config.hidden_size, bottleneck=cfg.bottleneck_dim).to(model.device)
+
+
+    audio_to_text_adapter = AudioToTextAdapter(audio_dim=cfg.audio_dim, text_dim=model.config.hidden_size, bottleneck=cfg.bottleneck_dim).float()
 
     ptl_model = AudioCaptionLightningModel(text_model=model, adapter=audio_to_text_adapter, tokenizer=tokenizer, learning_rate=cfg.learning_rate)
 
@@ -321,7 +354,7 @@ def main(cfg: DictConfig):
     )
 
 
-    with EmissionsTracker() as tracker:
+    with EmissionsTracker(measure_power_secs=60) as tracker:
         trainer.fit(ptl_model, training_dataloader, validation_dataloader)
 
     # load best model
