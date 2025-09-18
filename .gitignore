@@ -208,3 +208,4 @@ __marimo__/
 create_models/outputs
 create_models/outputs/*
 create_models/lightning_logs
+create_models/emissions.csv

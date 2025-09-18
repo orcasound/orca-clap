@@ -279,6 +279,7 @@ def main(cfg: DictConfig):
 
     # get a random audio feature and text
     orcahello_df.loc[:,"string_to_embed"] = strings_to_embed
+    orcahello_df = orcahello_df.loc[orcahello_df["string_to_embed"].str.strip()!=""]
     # split into train and val:
     orcahello_df.loc[:, 'timestamp'] = pd.to_datetime(orcahello_df['timestamp'], errors='raise', format='%Y-%m-%dT%H:%M:%S.%fZ')
 
@@ -309,7 +310,7 @@ def main(cfg: DictConfig):
     trainer = Trainer(
         max_epochs=cfg.max_epochs,
         accelerator=cfg.accelerator,
-        # devices=cfg.devices, # not valid on cpu
+        devices=cfg.devices, # not valid on cpu
         accumulate_grad_batches=cfg.gradient_accumulation_steps,
         strategy=cfg.strategy,
         precision=cfg.precision,
@@ -334,7 +335,17 @@ def main(cfg: DictConfig):
 
     print(f"Best model path: {best_model_path}")
 
-    ptl_model = AudioCaptionLightningModel.load_from_checkpoint(best_model_path, text_model=model, adapter=audio_to_text_adapter, tokenizer=tokenizer, learning_rate=cfg.learning_rate)
+    try:
+        ptl_model = AudioCaptionLightningModel.load_from_checkpoint(best_model_path, text_model=model, adapter=audio_to_text_adapter, tokenizer=tokenizer, learning_rate=cfg.learning_rate)
+    except Exception:
+        # getting error missing keys "text_model.model.embed_tokens.weight"
+        print(sorted(ptl_model.state_dict().keys())[:15])
+        state_dict = load_file(best_model_path)
+        print(sorted(state_dict.keys())[:15])
+        ptl_model.load_state_dict(state_dict, strict=True)
+
+        
+
 
 
 
