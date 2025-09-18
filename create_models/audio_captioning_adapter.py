@@ -301,6 +301,10 @@ def main(cfg: DictConfig):
     validation_dataloader = torch.utils.data.DataLoader(validation_dataset, shuffle=False, num_workers=cfg.num_workers, batch_size=cfg.batch_size)
 
 
+    model_checkpoint = ModelCheckpoint(monitor="val_loss", mode="min", save_top_k=1, filename="best-checkpoint")
+    early_stopping = EarlyStopping(monitor="val_loss", patience=cfg.patience, mode="min")
+
+
     # training
     trainer = Trainer(
         max_epochs=cfg.max_epochs,
@@ -310,8 +314,8 @@ def main(cfg: DictConfig):
         strategy=cfg.strategy,
         precision=cfg.precision,
         callbacks=[
-        ModelCheckpoint(monitor="val_loss", mode="min", save_top_k=1, filename="best-checkpoint"),
-        EarlyStopping(monitor="val_loss", patience=3, mode="min"),
+            model_checkpoint,
+            early_stopping,
         ],
     )
 
@@ -326,10 +330,12 @@ def main(cfg: DictConfig):
         # it is a deepspeed folder, convert it to the regular checkpoint
         from pytorch_lightning.utilities.deepspeed import convert_zero_checkpoint_to_fp32_state_dict
         convert_zero_checkpoint_to_fp32_state_dict(best_model_path, os.path.join(best_model_path, "best-checkpoint-final.ckpt"))
-        best_model_path = os.path.join(best_model_path, "best-checkpoint.ckpt")
+        best_model_path = os.path.join(best_model_path, "best-checkpoint-final.ckpt")
 
     print(f"Best model path: {best_model_path}")
+
     ptl_model = AudioCaptionLightningModel.load_from_checkpoint(best_model_path, text_model=model, adapter=audio_to_text_adapter, tokenizer=tokenizer, learning_rate=cfg.learning_rate)
+
 
 
 
