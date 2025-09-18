@@ -290,6 +290,10 @@ def main(cfg: DictConfig):
     train_df = orcahello_df[orcahello_df['timestamp'] < pd.Timestamp(cfg.validation_start_date)]
     val_df = orcahello_df[orcahello_df['timestamp'] >= pd.Timestamp(cfg.validation_start_date)]
 
+    print(len(train_df), len(val_df ))
+    assert len(train_df)>0, "Train set is empty. Please check the validation_start_date"
+    assert len(val_df)>0, "Val set is empty. Please check the validation_start_date"
+
     training_dataset = OrcaHelloAdapterDataset(train_df, tokenizer)
     training_dataloader = torch.utils.data.DataLoader(training_dataset, shuffle=True, num_workers=cfg.num_workers, batch_size=cfg.batch_size)
 
@@ -317,6 +321,13 @@ def main(cfg: DictConfig):
 
     # load best model
     best_model_path = trainer.checkpoint_callback.best_model_path
+
+    if os.path.isdir(best_model_path):
+        # it is a deepspeed folder, convert it to the regular checkpoint
+        from pytorch_lightning.utilities.deepspeed import convert_zero_checkpoint_to_fp32_state_dict
+        convert_zero_checkpoint_to_fp32_state_dict(best_model_path, os.path.join(best_model_path, "best-checkpoint-final.ckpt"))
+        best_model_path = os.path.join(best_model_path, "best-checkpoint.ckpt")
+
     print(f"Best model path: {best_model_path}")
     ptl_model = AudioCaptionLightningModel.load_from_checkpoint(best_model_path, text_model=model, adapter=audio_to_text_adapter, tokenizer=tokenizer, learning_rate=cfg.learning_rate)
 
