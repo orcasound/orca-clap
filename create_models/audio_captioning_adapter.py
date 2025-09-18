@@ -190,7 +190,8 @@ class AudioCaptionLightningModel(LightningModule):
         # Get embeddings and replace audio token
         audio_token_index = full_inputs.pop("audio_token_index")
 
-        text_embeddings = self.text_model.get_input_embeddings()(full_inputs['input_ids'])
+        with torch.no_grad():
+            text_embeddings = self.text_model.get_input_embeddings()(full_inputs['input_ids'])
         audio_feat = audio_feat.to(dtype=text_embeddings.dtype, device=text_embeddings.device)
         adapted_audio_embedding = self.adapter(audio_feat)
 
