@@ -302,7 +302,7 @@ def main(cfg: DictConfig):
 
 
     model_checkpoint = ModelCheckpoint(monitor="val_loss", mode="min", save_top_k=1, filename="best-checkpoint")
-    early_stopping = EarlyStopping(monitor="val_loss", patience=cfg.patience, mode="min")
+    early_stopping = EarlyStopping(monitor="val_loss", patience=cfg.early_stopping_patience, mode="min")
 
 
     # training
