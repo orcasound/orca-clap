@@ -147,9 +147,11 @@ class AudioToTextLightningModule(LightningModule):
         target = batch.pop("target")
         with torch.no_grad():
             embedded_text = self.text_model(**batch)
-        
+            # normalize the text embeddings
+            embedded_text = F.normalize(embedded_text.pooler_output.detach(), dim=-1)
+
         logits = self.adapter(encoded_data)
-        loss = self.criterion(logits, embedded_text.pooler_output.detach(), target.squeeze())
+        loss = self.criterion(logits, embedded_text, target.squeeze())
         self.log('train_loss', loss, sync_dist=True, prog_bar=True)
         return loss
     
@@ -158,10 +160,25 @@ class AudioToTextLightningModule(LightningModule):
         target = batch.pop("target")
         with torch.no_grad():
             embedded_text = self.text_model(**batch)
+            # normalize the text embeddings
+            embedded_text = F.normalize(embedded_text.pooler_output.detach(), dim=-1)
         
         logits = self.adapter(encoded_data)
-        loss = self.criterion(logits, embedded_text.pooler_output.detach(), target.squeeze())
+        loss = self.criterion(logits, embedded_text, target.squeeze())
         self.log('val_loss', loss, sync_dist=True, prog_bar=True)
+        return loss
+    
+    def test_step(self, batch, batch_idx):
+        encoded_data = batch.pop("embedding")
+        target = batch.pop("target")
+        with torch.no_grad():
+            embedded_text = self.text_model(**batch)
+            # normalize the text embeddings
+            embedded_text = F.normalize(embedded_text.pooler_output.detach(), dim=-1)
+        
+        logits = self.adapter(encoded_data)
+        loss = self.criterion(logits, embedded_text, target.squeeze())
+        self.log('test_loss', loss, sync_dist=True, prog_bar=True)
         return loss
     
     def configure_optimizers(self):
@@ -242,6 +259,9 @@ def train(cfg: DictConfig):
     trainer = Trainer(
         max_epochs=cfg.max_epochs,
         accelerator=cfg.accelerator,
+        # limit train steps:
+        # limit_train_batches=3,
+        # limit_val_batches=10,
         # devices=cfg.devices, # not valid on cpu
         accumulate_grad_batches=cfg.gradient_accumulation_steps,
         strategy=cfg.strategy,
@@ -260,29 +280,34 @@ def train(cfg: DictConfig):
     best_model_path = trainer.checkpoint_callback.best_model_path
     print(f"Best model path: {best_model_path}")
 
+
+    trainer.validate(
+        dataloaders = validation_dataloader,
+        ckpt_path="best") # load the best model and test
+
     # load best model
     best_model_path = trainer.checkpoint_callback.best_model_path
 
-    if os.path.isdir(best_model_path):
-        # it is a deepspeed folder, convert it to the regular checkpoint
-        from pytorch_lightning.utilities.deepspeed import convert_zero_checkpoint_to_fp32_state_dict
-        print("Converting deepspeed checkpoint to regular checkpoint...", best_model_path)
-        convert_zero_checkpoint_to_fp32_state_dict(best_model_path, os.path.join(best_model_path, "best-checkpoint-final.ckpt"))
-        best_model_path = os.path.join(best_model_path, "best-checkpoint-final.ckpt")
+    # if os.path.isdir(best_model_path):
+    #     # it is a deepspeed folder, convert it to the regular checkpoint
+    #     from pytorch_lightning.utilities.deepspeed import convert_zero_checkpoint_to_fp32_state_dict
+    #     print("Converting deepspeed checkpoint to regular checkpoint...", best_model_path)
+    #     convert_zero_checkpoint_to_fp32_state_dict(best_model_path, os.path.join(best_model_path, "best-checkpoint-final.ckpt"))
+    #     best_model_path = os.path.join(best_model_path, "best-checkpoint-final.ckpt")
 
-    print(f"Best model path: {best_model_path}")
+    # print(f"Best model path: {best_model_path}")
 
-    try:
-        ptl_model = AudioToTextLightningModule.load_from_checkpoint(best_model_path, text_model=text_model, adapter=Adapter, tokenizer=tokenizer, learning_rate=cfg.learning_rate)
-    except Exception:
-        # getting error missing keys "text_model.model.embed_tokens.weight"
-        print(sorted(ptl_model.state_dict().keys())[:15])
-        state_dict = load_file(best_model_path)
-        print(sorted(state_dict.keys())[:15])
-        ptl_model.load_state_dict(state_dict, strict=True)
+    # try:
+    #     ptl_model = AudioToTextLightningModule.load_from_checkpoint(best_model_path, text_model=text_model, adapter=Adapter, tokenizer=tokenizer, learning_rate=cfg.learning_rate)
+    # except Exception:
+    #     # getting error missing keys "text_model.model.embed_tokens.weight"
+    #     print(sorted(ptl_model.state_dict().keys())[:15])
+    #     state_dict = load_file(best_model_path)
+    #     print(sorted(state_dict.keys())[:15])
+    #     ptl_model.load_state_dict(state_dict, strict=True)
 
 
-    # adapter = ptl_model.adapter
+    # # adapter = ptl_model.adapter
 
 
 
