@@ -197,7 +197,6 @@ def main(cfg: DictConfig):
     if cfg.mode == "train":
         train(cfg)
     elif cfg.mode == "inference":
-        raise NotImplementedError
         inference(cfg)
 
         
@@ -314,6 +313,69 @@ def train(cfg: DictConfig):
     torch.save(ptl_model.adapter.state_dict(), os.path.join(cfg.output_path, f"adapter-{cfg.text_model_name.replace('/', '-')}.pth"))
     #safetensors
     save_file(ptl_model.adapter.state_dict(), os.path.join(cfg.output_path, f"adapter-{cfg.text_model_name.replace('/', '-')}.safetensors"))
+
+
+
+
+def inference(cfg: DictConfig):
+    """
+    Convert a dataframe with text to text embeddings using a text model
+    """
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    text_model_config = AutoModel.from_pretrained(cfg.text_model_name, cache_dir=cfg.hf_cache_dir).config
+    tokenizer = AutoTokenizer.from_pretrained(cfg.text_model_name, cache_dir=cfg.hf_cache_dir)
+
+    adapter = AudioToTextAdapter(cfg.audio_dim, text_model_config.hidden_size)
+    # reload adapter weights
+    adapter.load_state_dict(load_file(os.path.join(cfg.output_path, f"adapter-{cfg.text_model_name.replace('/', '-')}.safetensors")))
+    adapter = adapter.to(device)
+    adapter.eval()
+
+    # load the dataset
+    orcahello_df = pd.read_parquet(cfg.data_path)
+    orcahello_df.loc[:, "description"] = orcahello_df["description"].fillna("")
+
+    # sample 10 just for a demo
+    # orcahello_df = orcahello_df.sample(n=10, random_state=42).reset_index(drop=True)
+
+    strings_to_embed = []
+    for i, row in orcahello_df.iterrows():
+        # print(row)
+        out = sample_resolve_nan(row)
+        if i< 10:
+            print(out)
+        strings_to_embed.append(out)
+
+    orcahello_df.loc[:,"string_to_embed"] = strings_to_embed
+   
+    validation_dataset = OrcaHelloAdapterDataset(orcahello_df, tokenizer)
+    validation_dataloader = torch.utils.data.DataLoader(validation_dataset, shuffle=False, num_workers=cfg.num_workers, batch_size=1, drop_last=False)
+
+    all_embeddings = []
+    for batch in tqdm(validation_dataloader):
+        with torch.no_grad():
+            encoded_data = batch.pop("embedding").to(device)
+            # target = batch.pop("target").to(device)
+            # with torch.no_grad():
+            # embedded_text = text_model(**batch)
+            # normalize the text embeddings
+            # embedded_text = F.normalize(embedded_text.pooler_output.detach(), dim=-1)
+
+            logits = adapter(encoded_data)
+            all_embeddings.append(logits.cpu().data.numpy())
+
+    all_embeddings = np.vstack(all_embeddings)
+    print(all_embeddings.shape)
+
+    pd.DataFrame({"audio_uri":orcahello_df["flacPath"].values, "embedding":list(all_embeddings)}).to_parquet(os.path.join(cfg.output_path,"orcasound_audio_to_text_embeddings.parquet"), index=False)
+
+    # we want columns "audio_uri", "embeddings_list"
+
+
+
+
 
 
 

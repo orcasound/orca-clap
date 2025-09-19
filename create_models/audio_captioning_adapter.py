@@ -145,32 +145,38 @@ def sample_resolve_nan(x: pd.Series,):
     randomly sample a column that is not nan from the eligible annotation columns
     """
 
+    # old dfs had a "state" column
     return_string = ""
-    if x["state"].lower() =="positive":
-        return_string = "Southern Resident Killer Whales. "
+    if "state" in x.index:
+        if x["state"].lower() =="positive":
+            return_string = "Southern Resident Killer Whales. "
 
 
-    eligible_columns = ["comments",]
+        eligible_columns = ["comments",]
 
-    options = x[eligible_columns].values
-    options = [o for o in options if isinstance(o, str)]
+        options = x[eligible_columns].values
+        options = [o for o in options if isinstance(o, str)]
 
-    return_string = return_string + ". ".join(options).strip()
+        return_string = return_string + ". ".join(options).strip()
 
 
-    tags = [col for col in x.index if col.startswith("tags/")]
+        tags = [col for col in x.index if col.startswith("tags/")]
 
-    options = x[tags].values
-    options = [o for o in options if isinstance(o, str)]
+        options = x[tags].values
+        options = [o for o in options if isinstance(o, str)]
 
-    if len(options)>0:
-        if return_string =="":
-            return_string = "TAGS:" + ", ".join(options)
-        else:
-            return_string = ". ".join([return_string.strip('.'), "TAGS:" + ", ".join(options)])
+        if len(options)>0:
+            if return_string =="":
+                return_string = "TAGS:" + ", ".join(options)
+            else:
+                return_string = ". ".join([return_string.strip('.'), "TAGS:" + ", ".join(options)])
 
-    return return_string
+        return return_string
 
+    # new dfs just have a description column
+    if "description" in x.index:
+        return_string = x["description"].strip()
+        return return_string
 
 
 class AudioCaptionLightningModel(LightningModule):
@@ -302,6 +308,10 @@ def main(cfg: DictConfig):
 
     # data
     orcahello_df = pd.read_parquet(cfg.data_path) # contains embeddings_list column and "string_to_embed" column
+
+    if "description" in orcahello_df.columns:
+        orcahello_df = orcahello_df.loc[orcahello_df["description"].notna(), :]
+
     
     strings_to_embed = []
     for i, row in orcahello_df.iterrows():
@@ -356,8 +366,21 @@ def main(cfg: DictConfig):
     )
 
 
+    
+
+
     with EmissionsTracker(measure_power_secs=60) as tracker:
         trainer.fit(ptl_model, training_dataloader, validation_dataloader)
+
+
+    # run a validation loop
+    trainer.validate(dataloaders=validation_dataloader, ckpt_path="best")
+
+    torch.save(ptl_model.adapter.state_dict(), os.path.join(cfg.output_path, f"adapter-{cfg.text_model_name.replace('/', '-')}.pth"))
+    #safetensors
+    save_file(ptl_model.adapter.state_dict(), os.path.join(cfg.output_path, f"adapter-{cfg.text_model_name.replace('/', '-')}.safetensors"))
+
+    
 
     # load best model
     best_model_path = trainer.checkpoint_callback.best_model_path
