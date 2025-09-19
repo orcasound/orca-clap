@@ -94,7 +94,7 @@ def main(cfg: DictConfig):
     validation_dataloader = torch.utils.data.DataLoader(validation_dataset, shuffle=False, num_workers=cfg.num_workers, batch_size=1)
 
 
-    best_model_path = "lightning_logs/version_19/checkpoints/best-checkpoint.ckpt"
+    best_model_path = "lightning_logs/version_23/checkpoints/best-checkpoint.ckpt"
 
     if os.path.isdir(best_model_path):
         # it is a deepspeed folder, convert it to the regular checkpoint

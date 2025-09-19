@@ -19,6 +19,7 @@ from omegaconf import DictConfig, OmegaConf
 import os
 import random
 from tqdm import tqdm
+from codecarbon import EmissionsTracker
 
 
 
@@ -244,12 +245,34 @@ def train(cfg: DictConfig):
         ],
     )
 
-    trainer.fit(ptl_model, training_dataloader, validation_dataloader)
+    with EmissionsTracker(measure_power_secs=60) as tracker:
+        trainer.fit(ptl_model, training_dataloader, validation_dataloader)
 
     # load best model
     best_model_path = trainer.checkpoint_callback.best_model_path
     print(f"Best model path: {best_model_path}")
     ptl_model = AudioToTextLightningModule.load_from_checkpoint(best_model_path, adapter=Adapter, text_model=text_model, tokenizer=tokenizer)
+
+
+    # load best model
+    best_model_path = trainer.checkpoint_callback.best_model_path
+
+    if os.path.isdir(best_model_path):
+        # it is a deepspeed folder, convert it to the regular checkpoint
+        from pytorch_lightning.utilities.deepspeed import convert_zero_checkpoint_to_fp32_state_dict
+        convert_zero_checkpoint_to_fp32_state_dict(best_model_path, os.path.join(best_model_path, "best-checkpoint-final.ckpt"))
+        best_model_path = os.path.join(best_model_path, "best-checkpoint-final.ckpt")
+
+    print(f"Best model path: {best_model_path}")
+
+    try:
+        ptl_model = AudioToTextLightningModule.load_from_checkpoint(best_model_path, text_model=text_model, adapter=Adapter, tokenizer=tokenizer, learning_rate=cfg.learning_rate)
+    except Exception:
+        # getting error missing keys "text_model.model.embed_tokens.weight"
+        print(sorted(ptl_model.state_dict().keys())[:15])
+        state_dict = load_file(best_model_path)
+        print(sorted(state_dict.keys())[:15])
+        ptl_model.load_state_dict(state_dict, strict=True)
 
 
     # adapter = ptl_model.adapter
