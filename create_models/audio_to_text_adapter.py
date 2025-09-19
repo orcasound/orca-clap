@@ -198,6 +198,8 @@ def train(cfg: DictConfig):
 
     # load the dataset
     orcahello_df = pd.read_parquet(cfg.data_path)
+    if "description" in orcahello_df.columns:
+        orcahello_df = orcahello_df.loc[orcahello_df["description"].notna(), :]
 
     strings_to_embed = []
     for i, row in orcahello_df.iterrows():
