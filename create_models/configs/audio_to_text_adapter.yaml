@@ -5,6 +5,7 @@ mode: "train"
 
 # Model settings
 text_model_name: "BAAI/bge-m3"
+hf_cache_dir: null
 audio_dim: 384
 bottleneck_dim: 128
 

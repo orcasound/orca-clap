@@ -185,8 +185,8 @@ def train(cfg: DictConfig):
 
 
     #BAAI/bge-m3
-    text_model = AutoModel.from_pretrained(cfg.text_model_name)
-    tokenizer = AutoTokenizer.from_pretrained(cfg.text_model_name)
+    text_model = AutoModel.from_pretrained(cfg.text_model_name, cache_dir=cfg.hf_cache_dir)
+    tokenizer = AutoTokenizer.from_pretrained(cfg.text_model_name, cache_dir=cfg.hf_cache_dir)
 
     # Adapter = torch.nn.Linear(len(df.iloc[0]["embeddings_list"]), text_model.config.hidden_size)
     Adapter = AudioToTextAdapter(audio_dim = cfg.audio_dim, text_dim=text_model.config.hidden_size)
