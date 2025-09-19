@@ -28,35 +28,38 @@ def sample_resolve_nan(x: pd.Series,):
     randomly sample a column that is not nan from the eligible annotation columns
     """
 
+    # old dfs had a "state" column
     return_string = ""
-    if x["state"].lower() =="positive":
-        return_string = "Southern Resident Killer Whales. "
+    if "state" in x.index:
+        if x["state"].lower() =="positive":
+            return_string = "Southern Resident Killer Whales. "
 
 
-    eligible_columns = ["comments",]
+        eligible_columns = ["comments",]
 
-    options = x[eligible_columns].values
-    options = [o for o in options if isinstance(o, str)]
+        options = x[eligible_columns].values
+        options = [o for o in options if isinstance(o, str)]
 
-    return_string = return_string + ". ".join(options).strip()
-
-
-    tags = [col for col in x.index if col.startswith("tags/")]
-
-    options = x[tags].values
-    options = [o for o in options if isinstance(o, str)]
-
-    if len(options)>0:
-        if return_string =="":
-            return_string = "TAGS:" + ", ".join(options)
-        else:
-            return_string = ". ".join([return_string.strip('.'), "TAGS:" + ", ".join(options)])
-
-    return return_string
+        return_string = return_string + ". ".join(options).strip()
 
 
+        tags = [col for col in x.index if col.startswith("tags/")]
 
+        options = x[tags].values
+        options = [o for o in options if isinstance(o, str)]
 
+        if len(options)>0:
+            if return_string =="":
+                return_string = "TAGS:" + ", ".join(options)
+            else:
+                return_string = ". ".join([return_string.strip('.'), "TAGS:" + ", ".join(options)])
+
+        return return_string
+
+    # new dfs just have a description column
+    if "description" in x.index:
+        return_string = x["description"].strip()
+        return return_string
 
 def get_text_description(label):
     if label.lower() == "oo":
@@ -195,6 +198,7 @@ def train(cfg: DictConfig):
 
     # load the dataset
     orcahello_df = pd.read_parquet(cfg.data_path)
+
     strings_to_embed = []
     for i, row in orcahello_df.iterrows():
         # print(row)
@@ -209,6 +213,7 @@ def train(cfg: DictConfig):
 
     # print(max_date, min_date)
     print(orcahello_df['timestamp'].min(), orcahello_df['timestamp'].max())
+
 
 
     # split by time
