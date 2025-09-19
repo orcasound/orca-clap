@@ -143,7 +143,7 @@ class AudioToTextLightningModule(LightningModule):
         
         logits = self.adapter(encoded_data)
         loss = self.criterion(logits, embedded_text.pooler_output, target.squeeze())
-        self.log('train_loss', loss)
+        self.log('train_loss', loss, sync_dist=True, prog_bar=True)
         return loss
     
     def validation_step(self, batch, batch_idx):
@@ -154,7 +154,7 @@ class AudioToTextLightningModule(LightningModule):
         
         logits = self.adapter(encoded_data)
         loss = self.criterion(logits, embedded_text.pooler_output, target.squeeze())
-        self.log('val_loss', loss)
+        self.log('val_loss', loss, sync_dist=True, prog_bar=True)
         return loss
     
     def configure_optimizers(self):
