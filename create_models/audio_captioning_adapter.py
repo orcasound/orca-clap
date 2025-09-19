@@ -348,6 +348,7 @@ def main(cfg: DictConfig):
         accumulate_grad_batches=cfg.gradient_accumulation_steps,
         strategy=cfg.strategy,
         precision=cfg.precision,
+        log_every_n_steps=10, # large batch size
         callbacks=[
             model_checkpoint,
             early_stopping,
