@@ -89,12 +89,23 @@ class OrcaHelloAdapterDataset(torch.utils.data.Dataset):
         else:
             pass
 
-        on_target = torch.randint(0,2,(1,)) # optional augmentation
-        if on_target ==0:
-            # randomly sample another string from dataframe
-            random_index = random.randint(0,len(self.embeddings_df)-1)
-            text = self.embeddings_df.iloc[random_index]["string_to_embed"]
-            on_target = on_target -1 # Dissimilar
+        # on_target = torch.randint(0,2,(1,)) # optional augmentation
+        # much smaller probability of sampling 0:
+        # on_target = np.random.choice([1,0], p=[0.8,0.2]) # 1 = similar, 0 = dissimilar
+        # if on_target ==0:
+        #     # randomly sample another string from dataframe
+        #     random_index = random.randint(0,len(self.embeddings_df)-1)
+        #     print("text before:", text)
+        #     text = self.embeddings_df.iloc[random_index]["string_to_embed"]
+        #     print("text after:", text)
+        #     print('*****'*10)
+        #     # on_target = on_target -1 # Dissimilar
+
+        on_target=1
+
+        # assert on_target in [-1,1], f"on_target should be -1 or 1, got {on_target}"
+        on_target = torch.tensor(on_target, dtype=torch.float32)
+        # print(on_target)
 
 
         tokenized_text = self.tokenizer(text, padding="max_length", max_length=128, truncation=True, return_tensors="pt") # pad
@@ -142,7 +153,7 @@ class AudioToTextLightningModule(LightningModule):
             embedded_text = self.text_model(**batch)
         
         logits = self.adapter(encoded_data)
-        loss = self.criterion(logits, embedded_text.pooler_output, target.squeeze())
+        loss = self.criterion(logits, embedded_text.pooler_output.detach(), target.squeeze())
         self.log('train_loss', loss, sync_dist=True, prog_bar=True)
         return loss
     
@@ -153,7 +164,7 @@ class AudioToTextLightningModule(LightningModule):
             embedded_text = self.text_model(**batch)
         
         logits = self.adapter(encoded_data)
-        loss = self.criterion(logits, embedded_text.pooler_output, target.squeeze())
+        loss = self.criterion(logits, embedded_text.pooler_output.detach(), target.squeeze())
         self.log('val_loss', loss, sync_dist=True, prog_bar=True)
         return loss
     
@@ -252,8 +263,6 @@ def train(cfg: DictConfig):
     # load best model
     best_model_path = trainer.checkpoint_callback.best_model_path
     print(f"Best model path: {best_model_path}")
-    ptl_model = AudioToTextLightningModule.load_from_checkpoint(best_model_path, adapter=Adapter, text_model=text_model, tokenizer=tokenizer)
-
 
     # load best model
     best_model_path = trainer.checkpoint_callback.best_model_path
@@ -261,6 +270,7 @@ def train(cfg: DictConfig):
     if os.path.isdir(best_model_path):
         # it is a deepspeed folder, convert it to the regular checkpoint
         from pytorch_lightning.utilities.deepspeed import convert_zero_checkpoint_to_fp32_state_dict
+        print("Converting deepspeed checkpoint to regular checkpoint...", best_model_path)
         convert_zero_checkpoint_to_fp32_state_dict(best_model_path, os.path.join(best_model_path, "best-checkpoint-final.ckpt"))
         best_model_path = os.path.join(best_model_path, "best-checkpoint-final.ckpt")
 
