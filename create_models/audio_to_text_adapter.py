@@ -89,23 +89,19 @@ class OrcaHelloAdapterDataset(torch.utils.data.Dataset):
         else:
             pass
 
-        # on_target = torch.randint(0,2,(1,)) # optional augmentation
         # much smaller probability of sampling 0:
-        # on_target = np.random.choice([1,0], p=[0.8,0.2]) # 1 = similar, 0 = dissimilar
-        # if on_target ==0:
-        #     # randomly sample another string from dataframe
-        #     random_index = random.randint(0,len(self.embeddings_df)-1)
-        #     print("text before:", text)
-        #     text = self.embeddings_df.iloc[random_index]["string_to_embed"]
-        #     print("text after:", text)
-        #     print('*****'*10)
-        #     # on_target = on_target -1 # Dissimilar
+        on_target = np.random.choice([1,-1], p=[0.9,0.1]) # 1 = similar, 0 = dissimilar
+        if on_target ==-1:
+            # randomly sample another string from dataframe
+            random_index = random.randint(0,len(self.embeddings_df)-1)
+            # print("text before:", text)
+            text = self.embeddings_df.iloc[random_index]["string_to_embed"]
+            # print("text after:", text)
+            # print('*****'*10)
 
-        on_target=1
 
-        # assert on_target in [-1,1], f"on_target should be -1 or 1, got {on_target}"
+        assert on_target in [-1,1], f"on_target should be -1 or 1, got {on_target}"
         on_target = torch.tensor(on_target, dtype=torch.float32)
-        # print(on_target)
 
 
         tokenized_text = self.tokenizer(text, padding="max_length", max_length=128, truncation=True, return_tensors="pt") # pad
@@ -236,10 +232,10 @@ def train(cfg: DictConfig):
     print(f"Train size: {len(train_df)}, Val size: {len(val_df)}")
 
     training_dataset = OrcaHelloAdapterDataset(train_df, tokenizer)
-    training_dataloader = torch.utils.data.DataLoader(training_dataset, shuffle=True, num_workers=cfg.num_workers, batch_size=cfg.batch_size)
+    training_dataloader = torch.utils.data.DataLoader(training_dataset, shuffle=True, num_workers=cfg.num_workers, batch_size=cfg.batch_size, drop_last=True)
 
     validation_dataset = OrcaHelloAdapterDataset(val_df, tokenizer)
-    validation_dataloader = torch.utils.data.DataLoader(validation_dataset, shuffle=False, num_workers=cfg.num_workers, batch_size=cfg.batch_size)
+    validation_dataloader = torch.utils.data.DataLoader(validation_dataset, shuffle=False, num_workers=cfg.num_workers, batch_size=cfg.batch_size, drop_last=False)
 
 
 
