@@ -239,6 +239,7 @@ def train(cfg: DictConfig):
         accumulate_grad_batches=cfg.gradient_accumulation_steps,
         strategy=cfg.strategy,
         precision=cfg.precision,
+        log_every_n_steps=5,
         callbacks=[
         ModelCheckpoint(monitor="val_loss", mode="min", save_top_k=1, filename="best-checkpoint"),
         EarlyStopping(monitor="val_loss", patience=3, mode="min"),
