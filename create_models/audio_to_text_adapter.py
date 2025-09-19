@@ -98,7 +98,7 @@ class OrcaHelloAdapterDataset(torch.utils.data.Dataset):
 
         tokenized_text = self.tokenizer(text, padding="max_length", max_length=128, truncation=True, return_tensors="pt") # pad
         tokenized_text = {k:v.squeeze(0) for k,v in tokenized_text.items()} # remove batch dim
-        tokenized_text.update({"embedding":torch.tensor(embeddings, dtype=float), "target":on_target})
+        tokenized_text.update({"embedding":torch.tensor(embeddings, dtype=torch.float32), "target":on_target})
 
 
 
@@ -140,7 +140,7 @@ class AudioToTextLightningModule(LightningModule):
         with torch.no_grad():
             embedded_text = self.text_model(**batch)
         
-        logits = self.adapter(encoded_data.float())
+        logits = self.adapter(encoded_data)
         loss = self.criterion(logits, embedded_text.pooler_output, target.squeeze())
         self.log('train_loss', loss)
         return loss
@@ -151,7 +151,7 @@ class AudioToTextLightningModule(LightningModule):
         with torch.no_grad():
             embedded_text = self.text_model(**batch)
         
-        logits = self.adapter(encoded_data.float())
+        logits = self.adapter(encoded_data)
         loss = self.criterion(logits, embedded_text.pooler_output, target.squeeze())
         self.log('val_loss', loss)
         return loss
@@ -190,7 +190,6 @@ def train(cfg: DictConfig):
 
     # Adapter = torch.nn.Linear(len(df.iloc[0]["embeddings_list"]), text_model.config.hidden_size)
     Adapter = AudioToTextAdapter(audio_dim = cfg.audio_dim, text_dim=text_model.config.hidden_size)
-    Adapter.to(device)
 
 
     # ptl model
@@ -221,6 +220,8 @@ def train(cfg: DictConfig):
     # split by time
     train_df = orcahello_df[orcahello_df['timestamp'] < pd.Timestamp(cfg.validation_start_date)]
     val_df = orcahello_df[orcahello_df['timestamp'] >= pd.Timestamp(cfg.validation_start_date)]
+
+    print(f"Train size: {len(train_df)}, Val size: {len(val_df)}")
 
     training_dataset = OrcaHelloAdapterDataset(train_df, tokenizer)
     training_dataloader = torch.utils.data.DataLoader(training_dataset, shuffle=True, num_workers=cfg.num_workers, batch_size=cfg.batch_size)
