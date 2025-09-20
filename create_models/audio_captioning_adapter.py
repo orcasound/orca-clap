@@ -127,17 +127,17 @@ class OrcaHelloAdapterDataset(torch.utils.data.Dataset):
 
         audio_token_index = audio_token_positions[1][0].item()
 
-        full_inputs['labels'] = labels
+        prompt_inputs['labels'] = labels
         # sqeueeze batch dim
-        full_inputs = {k:v.squeeze(0) for k,v in full_inputs.items()}
+        prompt_inputs = {k:v.squeeze(0) for k,v in prompt_inputs.items()}
         # add audio embedding and position
-        full_inputs['audio_token_index'] = torch.tensor(audio_token_index).view(-1)
-        full_inputs['embedding'] = torch.tensor(embeddings, dtype=torch.float)
+        prompt_inputs['audio_token_index'] = torch.tensor(audio_token_index).view(-1)
+        prompt_inputs['embedding'] = torch.tensor(embeddings, dtype=torch.float)
 
 
 
 
-        return full_inputs
+        return prompt_inputs
     
 
 def sample_resolve_nan(x: pd.Series,):
@@ -190,7 +190,7 @@ class AudioCaptionLightningModel(LightningModule):
         self.learning_rate = learning_rate
         # self.loss_fn = torch.nn.CrossEntropyLoss()
 
-    def forward(self, audio_feat, full_inputs, labels):
+    def forward(self, audio_feat, full_inputs, labels, snap_to_nearest_token=False, return_model_inputs=False):
         """
         """
         # Get embeddings and replace audio token
@@ -200,6 +200,17 @@ class AudioCaptionLightningModel(LightningModule):
             text_embeddings = self.text_model.get_input_embeddings()(full_inputs['input_ids'])
         # audio_feat = audio_feat.to(dtype=text_embeddings.dtype, device=text_embeddings.device)
         adapted_audio_embedding = self.adapter(audio_feat)
+
+
+        # optinally snap the adapted audio embedding to the nearest text token embedding
+        if snap_to_nearest_token:
+            # to do this, we need to get the text token embeddings
+            token_embeddings = self.text_model.get_input_embeddings().weight  # (vocab_size, hidden_size)
+            # compute euclidean distance between adapted_audio_embedding and token_embeddings
+            dists = torch.cdist(adapted_audio_embedding.unsqueeze(1), token_embeddings.unsqueeze(0))  # (batch, 1, vocab_size)
+            nearest_token_indices = torch.argmin(dists, dim=-1).squeeze(1)  # (batch,)
+            adapted_audio_embedding = token_embeddings[nearest_token_indices]  # (batch, hidden_size)
+
 
 
 
@@ -244,6 +255,8 @@ class AudioCaptionLightningModel(LightningModule):
         }
 
         outputs = self.text_model(**model_inputs)
+        if return_model_inputs:
+            return outputs, model_inputs
         return outputs
 
     def training_step(self, batch, batch_idx):
@@ -374,7 +387,7 @@ def main(cfg: DictConfig):
 
 
     # run a validation loop
-    trainer.validate(dataloaders=validation_dataloader, ckpt_path="best")
+    trainer.validate(dataloaders=validation_dataloader, ckpt_path="best") 
 
     torch.save(ptl_model.adapter.state_dict(), os.path.join(cfg.output_path, f"adapter-{cfg.text_model_name.replace('/', '-')}.pth"))
     #safetensors

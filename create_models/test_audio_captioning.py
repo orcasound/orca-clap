@@ -60,6 +60,9 @@ def main(cfg: DictConfig):
 
     # data
     orcahello_df = pd.read_parquet(cfg.data_path) # contains embeddings_list column and "string_to_embed" column
+
+    if "description" in orcahello_df.columns:
+        orcahello_df = orcahello_df.loc[orcahello_df["description"].notna(), :]
     
     strings_to_embed = []
     for i, row in orcahello_df.iterrows():
@@ -94,7 +97,9 @@ def main(cfg: DictConfig):
     validation_dataloader = torch.utils.data.DataLoader(validation_dataset, shuffle=False, num_workers=cfg.num_workers, batch_size=1)
 
 
-    best_model_path = "lightning_logs/version_23/checkpoints/best-checkpoint.ckpt"
+    # best_model_path = "lightning_logs/version_23/checkpoints/best-checkpoint.ckpt"
+    best_model_path = "lightning_logs/version_47/checkpoints/best-checkpoint.ckpt/best-checkpoint-final.ckpt"
+
 
     if os.path.isdir(best_model_path):
         # it is a deepspeed folder, convert it to the regular checkpoint
@@ -141,7 +146,10 @@ def main(cfg: DictConfig):
             audio_feat = batch.pop("embedding")
             labels = batch.pop("labels")
 
-            outputs = ptl_model(audio_feat, batch, labels)
+            # decode the batch["input_ids"][0] to see the input
+            # print(Fore.BLUE +"input ids" + Style.RESET_ALL, tokenizer.decode(batch["input_ids"][0], skip_special_tokens=False))
+
+            outputs, model_inputs = ptl_model(audio_feat, batch, labels, snap_to_nearest_token=False, return_model_inputs=True)
 
             logits = outputs.logits
             # get the predicted tokens
@@ -153,6 +161,10 @@ def main(cfg: DictConfig):
 
             print("---"*50)
             print(Fore.CYAN + "Original: " +Style.RESET_ALL, tokenizer.decode(labels[0], skip_special_tokens=True))
+            # decode model_inputs["inputs_embeds"][0] to see the input
+            #input_embeds to ids:
+            input_ids = torch.argmax(model_inputs["inputs_embeds"][0] @ ptl_model.text_model.get_input_embeddings().weight.T, dim=-1)
+            print(Fore.YELLOW + "Input: " + Style.RESET_ALL, tokenizer.decode(input_ids, skip_special_tokens=True).strip().replace("\n"," ").replace("  "," "))
             print(Fore.MAGENTA + "Generated: " + Style.RESET_ALL, tokenizer.decode(predicted_tokens[0], skip_special_tokens=True).strip().replace("\n"," ").replace("  "," "))
 
 
