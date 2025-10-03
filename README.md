@@ -4,7 +4,7 @@ Contrastive Language-Audio Pretraining (CLAP) model that recognizes similarities
 Proposed layout:
 - python/ (inference server—tiny FastAPI with /embed, /score, /nearest)
 - tools/
--   node-text-audio-pairs/ (Node utility for generating pairs)
--   shared CSV schema samples
+  - node-text-audio-pairs/ (Node utility for generating pairs)
+  -   shared CSV schema samples
 - models/ (download/readme scripts, no weights checked in)
 - docs/ (usage + examples)
